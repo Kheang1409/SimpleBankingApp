@@ -1,0 +1,59 @@
+name: ASP.NET MVC CI/CD
+
+# Trigger the pipeline on push to the main branch
+on:
+  push:
+    branches:
+      - main # Triggers the pipeline when changes are pushed to the main branch
+  pull_request:
+    branches:
+      - main # Triggers the pipeline when a pull request is opened against the main branch
+
+jobs:
+  build:
+    runs-on: windows-latest # Choose a runner (windows-latest, ubuntu-latest, etc.)
+
+    steps:
+      # Step 1: Checkout the code from the repository
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      # Step 2: Set up .NET SDK (adjust version according to your project's needs)
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: "9.0" # Set this to the version you're using for your app
+
+      # Step 3: Restore NuGet packages
+      - name: Restore NuGet packages
+        run: dotnet restore SimpleBankingApp.sln # Make sure the solution file is correct
+
+      # Step 4: Build the project
+      - name: Build project
+        run: dotnet build SimpleBankingApp.sln --configuration Release # Use Release or Debug depending on your needs
+
+      # Step 5: Run unit tests (optional but recommended)
+      - name: Run tests
+        run: dotnet test SimpleBankingApp.sln --configuration Release # Runs tests to ensure everything works
+
+      # Step 6: Publish the app to prepare for deployment (change output path as needed)
+      - name: Publish project
+        run: dotnet publish SimpleBankingApp.sln --configuration Release --output ./publish
+
+  deploy:
+    runs-on: windows-latest
+    needs: build # Ensures deployment only happens after the build job has passed
+
+    steps:
+      # Step 1: Checkout the code again (needed in deploy job)
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      # Step 2: Deploy the application (this step is customizable based on where you deploy)
+      - name: Deploy your application
+        run: |
+          echo "Deploying your application"
+          # You can replace the next line with your deployment script, such as:
+          # Upload to an SFTP server, deploy to Docker, or run an Azure CLI command
+          # Example for a generic deployment (replace with your actual deployment steps):
+          echo "Deploy step needs to be customized based on the deployment target"
