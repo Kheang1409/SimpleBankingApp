@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace SimpleBankingApp.Models
 {
@@ -6,21 +7,16 @@ namespace SimpleBankingApp.Models
     {
         [Key]
         public int CustomerId { get; set; }
-
         [Required]
         [StringLength(100)]
         public string FullName { get; set; }
-
         [Required]
         [EmailAddress]
         public string Email { get; set; }
-
         [Required]
         [StringLength(15)]
         public string PhoneNumber { get; set; }
-
-        // Navigation property: One Customer has multiple Accounts
+        [JsonIgnore]
         public List<Account> Accounts { get; set; } = new List<Account>();
-
     }
 }

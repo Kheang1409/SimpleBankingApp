@@ -1,50 +1,49 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Rendering;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using SimpleBankingApp.Models;
+using SimpleBankingApp.Services;
+using Microsoft.AspNetCore.Mvc.Rendering;
 
 namespace SimpleBankingApp.Controllers
 {
     public class AccountController : Controller
     {
-        private readonly AppDbContext _context;
-        private readonly IMemoryCache _cache;
+        private readonly CacheService _cacheService; // Using CacheService for Redis caching
+        private readonly AccountService _accountService; // AccountService to manage account-related operations
+        private readonly ILogger<AccountController> _logger;
 
-        public AccountController(AppDbContext context, IMemoryCache cache)
+        public AccountController(CacheService cacheService, AccountService accountService, ILogger<AccountController> logger)
         {
-            _context = context;
-            _cache = cache;
+            _cacheService = cacheService;
+            _accountService = accountService;
+            _logger = logger;
         }
 
         // GET: Account
         public async Task<IActionResult> Index()
         {
-            List<Account> accounts;
-            if (!_cache.TryGetValue("accounts", out accounts))
+            string cacheKey = "accounts_list";
+            TimeSpan cacheExpiry = TimeSpan.FromMinutes(5);
+
+            // Try to get data from Redis cache
+            var cachedAccounts = await _cacheService.GetDataAsync<List<Account>>(cacheKey);
+            if (cachedAccounts != null)
             {
-                var appDbContext = _context.Accounts.Include(a => a.Customer);
-                accounts = await appDbContext.ToListAsync();
-                var cacheEntryOptions = new MemoryCacheEntryOptions().SetSlidingExpiration(TimeSpan.FromMinutes(5));
+                return View(cachedAccounts);
             }
+
+            // If cache is empty, fetch data from DB
+            var accounts = await _accountService.GetAllAccountsAsync();
+
+            // Store data in Redis
+            await _cacheService.SetDataAsync(cacheKey, accounts, cacheExpiry);
+
             return View(accounts);
         }
 
         // GET: Account/Details/5
-        public async Task<IActionResult> Details(int? id)
+        public async Task<IActionResult> Details(int id)
         {
-            if (id == null)
-            {
-                return NotFound();
-            }
-
-            var account = await _context.Accounts
-                .Include(a => a.Customer)
-                .FirstOrDefaultAsync(m => m.AccountId == id);
+            var account = await _accountService.GetAccountByIdAsync(id);
             if (account == null)
             {
                 return NotFound();
@@ -56,47 +55,75 @@ namespace SimpleBankingApp.Controllers
         // GET: Account/Create
         public IActionResult Create()
         {
-            ViewData["CustomerId"] = new SelectList(_context.Customers, "CustomerId", "Email");
+            var customers = _accountService.GetCustomers();
+
+            if (customers == null || !customers.Any())
+            {
+                _logger.LogWarning("No customers found to populate the dropdown.");
+            }
+
+            ViewBag.CustomerId = new SelectList(customers, "CustomerId", "FullName");
             return View();
         }
 
+
         // POST: Account/Create
-        // To protect from overposting attacks, enable the specific properties you want to bind to.
-        // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create([Bind("AccountId,AccountType,Balance,CustomerId")] Account account)
+        public async Task<IActionResult> Create([Bind("AccountId, AccountType, Balance, CustomerId")] Account account)
         {
-            if (ModelState.IsValid)
+            // Log the CustomerId to see if it is being passed correctly
+            _logger.LogInformation("CustomerId: " + account.CustomerId);
+
+            // Log the ModelState to see why it's invalid
+            _logger.LogInformation("Model State Is Valid: " + ModelState.IsValid);
+            foreach (var error in ModelState.Values.SelectMany(v => v.Errors))
             {
-                _context.Add(account);
-                await _context.SaveChangesAsync();
-                return RedirectToAction(nameof(Index));
+                _logger.LogError("Error: {ErrorMessage}", error.ErrorMessage);
             }
-            ViewData["CustomerId"] = new SelectList(_context.Customers, "CustomerId", "Email", account.CustomerId);
-            return View(account);
+
+            if (account.CustomerId == 0)
+            {
+                _logger.LogWarning("CustomerId was not selected.");
+                ModelState.AddModelError("CustomerId", "Please select a customer.");
+            }
+
+            // Check for invalid model state
+            if (!ModelState.IsValid)
+            {
+                // Re-populate the customer dropdown for the view
+                var customers = _accountService.GetCustomers();
+                ViewData["CustomerId"] = new SelectList(customers, "CustomerId", "FullName", account.CustomerId);
+
+                // Return the model with validation errors back to the view
+                return View(account);
+            }
+
+            // Proceed with adding the account if valid
+            await _accountService.AddAccountAsync(account);
+
+            // Clear the cache after adding a new account
+            await _cacheService.RemoveDataAsync("accounts_list");
+
+            return RedirectToAction(nameof(Index));
         }
 
-        // GET: Account/Edit/5
-        public async Task<IActionResult> Edit(int? id)
-        {
-            if (id == null)
-            {
-                return NotFound();
-            }
 
-            var account = await _context.Accounts.FindAsync(id);
+
+        // GET: Account/Edit/5
+        public async Task<IActionResult> Edit(int id)
+        {
+            var account = await _accountService.GetAccountByIdAsync(id);
             if (account == null)
             {
                 return NotFound();
             }
-            ViewData["CustomerId"] = new SelectList(_context.Customers, "CustomerId", "Email", account.CustomerId);
+
+            ViewData["CustomerId"] = new SelectList(_accountService.GetCustomers(), "CustomerId", "FullName", account.CustomerId);
             return View(account);
         }
 
         // POST: Account/Edit/5
-        // To protect from overposting attacks, enable the specific properties you want to bind to.
-        // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Edit(int id, [Bind("AccountId,AccountType,Balance,CustomerId")] Account account)
@@ -108,39 +135,22 @@ namespace SimpleBankingApp.Controllers
 
             if (ModelState.IsValid)
             {
-                try
-                {
-                    _context.Update(account);
-                    await _context.SaveChangesAsync();
-                }
-                catch (DbUpdateConcurrencyException)
-                {
-                    if (!AccountExists(account.AccountId))
-                    {
-                        return NotFound();
-                    }
-                    else
-                    {
-                        throw;
-                    }
-                }
+                await _accountService.UpdateAccountAsync(account);
+
+                // Clear the cache after updating an account
+                await _cacheService.RemoveDataAsync("accounts_list");
+
                 return RedirectToAction(nameof(Index));
             }
-            ViewData["CustomerId"] = new SelectList(_context.Customers, "CustomerId", "Email", account.CustomerId);
+
+            ViewData["CustomerId"] = new SelectList(_accountService.GetCustomers(), "CustomerId", "FullName", account.CustomerId);
             return View(account);
         }
 
         // GET: Account/Delete/5
-        public async Task<IActionResult> Delete(int? id)
+        public async Task<IActionResult> Delete(int id)
         {
-            if (id == null)
-            {
-                return NotFound();
-            }
-
-            var account = await _context.Accounts
-                .Include(a => a.Customer)
-                .FirstOrDefaultAsync(m => m.AccountId == id);
+            var account = await _accountService.GetAccountByIdAsync(id);
             if (account == null)
             {
                 return NotFound();
@@ -154,34 +164,30 @@ namespace SimpleBankingApp.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> DeleteConfirmed(int id)
         {
-            var account = await _context.Accounts.FindAsync(id);
-            if (account != null)
-            {
-                _context.Accounts.Remove(account);
-            }
+            await _accountService.DeleteAccountAsync(id);
 
-            await _context.SaveChangesAsync();
+            // Clear the cache after deleting an account
+            await _cacheService.RemoveDataAsync("accounts_list");
+
             return RedirectToAction(nameof(Index));
         }
 
         // GET: Account/Deposit/5
         [HttpGet]
-        public async Task<IActionResult> Deposit(int? id)
+        public async Task<IActionResult> Deposit(int id)
         {
-            if (id == null)
-            {
-                return NotFound();
-            }
-            var account = await _context.Accounts.FindAsync(id);
+            var account = await _accountService.GetAccountByIdAsync(id);
             if (account == null)
             {
                 return NotFound();
             }
+
             var model = new DepositViewModel
             {
                 AccountId = account.AccountId,
                 CurrentBalance = account.Balance
             };
+
             return View(model);
         }
 
@@ -192,13 +198,19 @@ namespace SimpleBankingApp.Controllers
         {
             if (ModelState.IsValid)
             {
-                var account = await _context.Accounts.FindAsync(model.AccountId);
+                var account = await _accountService.GetAccountByIdAsync(model.AccountId);
                 if (account == null)
                 {
                     return NotFound();
                 }
+
                 account.Balance += model.Amount;
-                await _context.SaveChangesAsync();
+                await _accountService.UpdateAccountAsync(account);
+
+                // Clear the cache after deposit
+                await _cacheService.RemoveDataAsync("accounts_list");
+                await _cacheService.SetDataAsync($"account_{account.AccountId}", account, TimeSpan.FromMinutes(5)); // Cache updated account
+
                 return RedirectToAction(nameof(Index));
             }
 
@@ -207,22 +219,20 @@ namespace SimpleBankingApp.Controllers
 
         // GET: Account/Withdraw/5
         [HttpGet]
-        public async Task<IActionResult> Withdraw(int? id)
+        public async Task<IActionResult> Withdraw(int id)
         {
-            if (id == null)
-            {
-                return NotFound();
-            }
-            var account = await _context.Accounts.FindAsync(id);
+            var account = await _accountService.GetAccountByIdAsync(id);
             if (account == null)
             {
                 return NotFound();
             }
+
             var model = new WithdrawViewModel
             {
                 AccountId = account.AccountId,
                 CurrentBalance = account.Balance
             };
+
             return View(model);
         }
 
@@ -233,26 +243,29 @@ namespace SimpleBankingApp.Controllers
         {
             if (ModelState.IsValid)
             {
-                var account = await _context.Accounts.FindAsync(model.AccountId);
+                var account = await _accountService.GetAccountByIdAsync(model.AccountId);
                 if (account == null)
                 {
                     return NotFound();
                 }
+
                 if (model.Amount > account.Balance)
                 {
                     ModelState.AddModelError("Amount", "Insufficient funds.");
                     return View(model);
                 }
+
                 account.Balance -= model.Amount;
-                await _context.SaveChangesAsync();
+                await _accountService.UpdateAccountAsync(account);
+
+                // Clear the cache after withdrawal
+                await _cacheService.RemoveDataAsync("accounts_list");
+                await _cacheService.SetDataAsync($"account_{account.AccountId}", account, TimeSpan.FromMinutes(5)); // Cache updated account
+
                 return RedirectToAction(nameof(Index));
             }
-            return View(model);
-        }
 
-        private bool AccountExists(int id)
-        {
-            return _context.Accounts.Any(e => e.AccountId == id);
+            return View(model);
         }
     }
 }
