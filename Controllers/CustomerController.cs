@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using NuGet.Protocol;
 using SimpleBankingApp.Models;
 using SimpleBankingApp.Services;
+using StackExchange.Redis;
 
 namespace SimpleBankingApp.Controllers
 {
@@ -9,11 +10,13 @@ namespace SimpleBankingApp.Controllers
     {
         private readonly CacheService _cacheService;
         private readonly CustomerService _customerService;
+        private readonly IConnectionMultiplexer _redis;
 
-        public CustomerController(CacheService cacheService, CustomerService customerService)
+        public CustomerController(CacheService cacheService, CustomerService customerService, IConnectionMultiplexer redis)
         {
             _cacheService = cacheService;
             _customerService = customerService;
+            _redis = redis;
         }
 
         // GET: Customer
@@ -63,7 +66,8 @@ namespace SimpleBankingApp.Controllers
             if (ModelState.IsValid)
             {
                 await _customerService.AddCustomerAsync(customer);
-                await _cacheService.RemoveDataAsync("customers_list");
+                var sub = _redis.GetSubscriber();
+                await sub.PublishAsync("cache-invalidation", "customers_list");
                 return RedirectToAction(nameof(Index));
             }
             return View(customer);
@@ -95,6 +99,8 @@ namespace SimpleBankingApp.Controllers
             {
                 await _cacheService.RemoveDataAsync("customers_list");
                 await _customerService.UpdateCustomerAsync(customer);
+                var sub = _redis.GetSubscriber();
+                await sub.PublishAsync("cache-invalidation", "customers_list");
                 return RedirectToAction(nameof(Index));
             }
 
@@ -119,6 +125,8 @@ namespace SimpleBankingApp.Controllers
         {
             await _cacheService.RemoveDataAsync("customers_list");
             await _customerService.DeleteCustomerAsync(id);
+            var sub = _redis.GetSubscriber();
+            await sub.PublishAsync("cache-invalidation", "customers_list");
             return RedirectToAction(nameof(Index));
         }
     }

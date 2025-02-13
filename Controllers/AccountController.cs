@@ -72,40 +72,14 @@ namespace SimpleBankingApp.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Create([Bind("AccountId, AccountType, Balance, CustomerId")] Account account)
         {
-            // Log the CustomerId to see if it is being passed correctly
-            _logger.LogInformation("CustomerId: " + account.CustomerId);
-
-            // Log the ModelState to see why it's invalid
-            _logger.LogInformation("Model State Is Valid: " + ModelState.IsValid);
-            foreach (var error in ModelState.Values.SelectMany(v => v.Errors))
+            if (ModelState.IsValid)
             {
-                _logger.LogError("Error: {ErrorMessage}", error.ErrorMessage);
+                await _accountService.AddAccountAsync(account);
+                await _cacheService.RemoveDataAsync("accounts_list");
+
+                return RedirectToAction(nameof(Index));
             }
-
-            if (account.CustomerId == 0)
-            {
-                _logger.LogWarning("CustomerId was not selected.");
-                ModelState.AddModelError("CustomerId", "Please select a customer.");
-            }
-
-            // Check for invalid model state
-            if (!ModelState.IsValid)
-            {
-                // Re-populate the customer dropdown for the view
-                var customers = _accountService.GetCustomers();
-                ViewData["CustomerId"] = new SelectList(customers, "CustomerId", "FullName", account.CustomerId);
-
-                // Return the model with validation errors back to the view
-                return View(account);
-            }
-
-            // Proceed with adding the account if valid
-            await _accountService.AddAccountAsync(account);
-
-            // Clear the cache after adding a new account
-            await _cacheService.RemoveDataAsync("accounts_list");
-
-            return RedirectToAction(nameof(Index));
+            return View(account);
         }
 
 
@@ -204,14 +178,21 @@ namespace SimpleBankingApp.Controllers
                     return NotFound();
                 }
 
-                account.Balance += model.Amount;
-                await _accountService.UpdateAccountAsync(account);
+                if (model.Amount <= 0)
+                {
+                    ModelState.AddModelError("Amount", "Deposit amount must be greater than zero.");
+                }
 
-                // Clear the cache after deposit
-                await _cacheService.RemoveDataAsync("accounts_list");
-                await _cacheService.SetDataAsync($"account_{account.AccountId}", account, TimeSpan.FromMinutes(5)); // Cache updated account
+                if (ModelState.IsValid)
+                {
+                    account.Balance += model.Amount;
+                    await _accountService.UpdateAccountAsync(account);
 
-                return RedirectToAction(nameof(Index));
+                    await _cacheService.RemoveDataAsync("accounts_list");
+                    await _cacheService.SetDataAsync($"account_{account.AccountId}", account, TimeSpan.FromMinutes(5));
+
+                    return RedirectToAction(nameof(Index));
+                }
             }
 
             return View(model);

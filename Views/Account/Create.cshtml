@@ -13,35 +13,41 @@
         <form asp-action="Create">
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 
+            <!-- AccountType dropdown list -->
             <div class="form-group">
                 <label asp-for="AccountType" class="control-label"></label>
-                <input asp-for="AccountType" class="form-control" />
+                <select asp-for="AccountType" class="form-control">
+                    <option value="">Please select an account type</option>
+                    <option value="Savings">Savings</option>
+                    <option value="Checking">Checking</option>
+                </select>
                 <span asp-validation-for="AccountType" class="text-danger"></span>
             </div>
 
+            <!-- Balance input field with validation -->
             <div class="form-group">
                 <label asp-for="Balance" class="control-label"></label>
-                <input asp-for="Balance" class="form-control" />
+                <input asp-for="Balance" class="form-control" type="number" step="0.01" min="0" />
                 <span asp-validation-for="Balance" class="text-danger"></span>
             </div>
 
+            <!-- CustomerId dropdown list -->
             <div class="form-group">
                 <label asp-for="CustomerId" class="control-label"></label>
                 <select asp-for="CustomerId" class="form-control" asp-items="ViewBag.CustomerId">
                     <option value="0">Please select a customer</option>
                     <!-- Default option, ensure this does not get submitted -->
                 </select>
-
                 <span asp-validation-for="CustomerId" class="text-danger"></span>
             </div>
 
+            <!-- Submit button -->
             <div class="form-group">
                 <input type="submit" value="Create" class="btn btn-primary" />
             </div>
         </form>
     </div>
 </div>
-
 
 <div>
     <a asp-action="Index">Back to List</a>

@@ -53,6 +53,7 @@ builder.Services.AddInMemoryRateLimiting();
 builder.Services.AddSingleton<IRateLimitCounterStore, RedisRateLimitCounterStore>();
 builder.Services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>();
 builder.Services.AddSingleton<CacheService>();
+builder.Services.AddHostedService<RedisSubscriber>();
 builder.Services.AddScoped<CustomerService>();
 builder.Services.AddScoped<AccountService>();
 // Register the repository
@@ -76,6 +77,7 @@ builder.Services.AddControllersWithViews().AddJsonOptions(options =>
         options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.Preserve;
         options.JsonSerializerOptions.MaxDepth = 64; // You can adjust the max depth if needed
     }); ;
+
 
 var app = builder.Build();
 
