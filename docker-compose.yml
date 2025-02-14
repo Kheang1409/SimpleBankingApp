@@ -8,6 +8,12 @@ services:
       - SA_PASSWORD=Password_123#
     ports:
       - "1433:1433"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "nc -z localhost 1433"]
+      interval: 30s
+      retries: 5
+      start_period: 10s
+      timeout: 10s
 
   mvcapp:
     build: ./
@@ -19,6 +25,8 @@ services:
     depends_on:
       - sql_server_container
       - redis
+    networks:
+      - default
 
   redis:
     image: redis
@@ -27,3 +35,7 @@ services:
       - "6379:6379"
     networks:
       - default
+
+networks:
+  default:
+    driver: bridge
