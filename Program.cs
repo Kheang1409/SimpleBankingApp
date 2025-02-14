@@ -10,7 +10,7 @@ var builder = WebApplication.CreateBuilder(args);
 var configuration = builder.Configuration;
 
 // Redis Configuration
-var redisConnection = builder.Configuration["Redis:ConnectionString"];
+var redisConnection = Environment.GetEnvironmentVariable("RedisConnection") ?? builder.Configuration["Redis:ConnectionString"];
 if (string.IsNullOrEmpty(redisConnection))
 {
     throw new InvalidOperationException("Redis connection string is not configured.");
@@ -60,9 +60,12 @@ builder.Services.AddScoped<AccountService>();
 builder.Services.AddScoped<IAccountRepository, AccountRepository>();
 builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
 
+var connectionString = Environment.GetEnvironmentVariable("SqlConnection")
+                       ?? builder.Configuration.GetConnectionString("SqlConnection");
+
 // Configure DbContext
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(configuration.GetConnectionString("DefaultConnection"))
+    options.UseSqlServer(connectionString)
 );
 
 builder.Services.Configure<CookiePolicyOptions>(options =>
@@ -73,13 +76,20 @@ builder.Services.Configure<CookiePolicyOptions>(options =>
 
 // Add MVC controllers and views
 builder.Services.AddControllersWithViews().AddJsonOptions(options =>
-    {
-        options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.Preserve;
-        options.JsonSerializerOptions.MaxDepth = 64; // You can adjust the max depth if needed
-    }); ;
+{
+    options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.Preserve;
+    options.JsonSerializerOptions.MaxDepth = 64; // You can adjust the max depth if needed
+});
 
-
+// Build the app
 var app = builder.Build();
+
+// Apply database migrations automatically on startup
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    dbContext.Database.Migrate();  // This ensures that migrations are applied automatically at startup
+}
 
 if (!app.Environment.IsDevelopment())
 {

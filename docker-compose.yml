@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  sql_server_container:
+    image: mcr.microsoft.com/mssql/server
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=Password_123#
+    ports:
+      - "1433:1433"
+
+  mvcapp:
+    build: ./
+    environment:
+      - SqlConnection=Server=sql_server_container,1433;Database=SimpleBankingDB;User Id=sa;Password=Password_123#;TrustServerCertificate=True
+      - RedisConnection=redis:6379
+    ports:
+      - "8080:8080"
+    depends_on:
+      - sql_server_container
+      - redis
+
+  redis:
+    image: redis
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - default

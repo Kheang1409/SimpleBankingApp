@@ -12,11 +12,11 @@
 [Dd]ebugPublic/
 [Dd]ist/
 [Dd]eploy/
-[Dd]ebug-*(
+[Dd]ebug-*
 [Dd]ist/
 [Dd]ebug*/ 
 [Dd]ebug*/ 
-[Dd]ebug/ 
+[Dd]ebug/
 
 # .NET Core-specific files
 project.lock.json
@@ -29,8 +29,10 @@ artifacts/
 *.msm
 *.msp
 
-# Windows Installer files
-*.cab
-*.msi
-*.msm
-*.msp
+# Ignore obj folder and intermediate files (including the AssemblyInfo files you mentioned)
+obj/
+bin/
+
+# Ignore specific .NET files like AssemblyInfo
+**/obj/**/*.AssemblyInfo.cs
+**/obj/**/*.AssemblyInfoInputs.cache
