@@ -1,59 +1,88 @@
-name: ASP.NET MVC CI/CD
+name: CI/CD Pipeline
 
-# Trigger the pipeline on push to the main branch
 on:
   push:
     branches:
-      - main # Triggers the pipeline when changes are pushed to the main branch
+      - production # Trigger on push to the main branch
   pull_request:
     branches:
-      - main # Triggers the pipeline when a pull request is opened against the main branch
+      - production # Trigger on pull requests to the main branch
 
 jobs:
-  build:
-    runs-on: windows-latest # Choose a runner (windows-latest, ubuntu-latest, etc.)
+  # Build and Test job
+  build_and_test:
+    runs-on: ubuntu-latest
+
+    services:
+      sql_server_container:
+        image: mcr.microsoft.com/mssql/server
+        options: --health-cmd="wait-for-it -t 30 localhost:1433" --health-start-period=30s
+        ports:
+          - 1433:1433
+        env:
+          ACCEPT_EULA: Y
+          SA_PASSWORD: Password_123#
+
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
 
     steps:
-      # Step 1: Checkout the code from the repository
+      # Checkout the code from GitHub repository
       - name: Checkout code
         uses: actions/checkout@v2
 
-      # Step 2: Set up .NET SDK (adjust version according to your project's needs)
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v3
+      # Set up Docker
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      # Log in to DockerHub (if you need to push to DockerHub)
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
         with:
-          dotnet-version: "9.0" # Set this to the version you're using for your app
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # Step 3: Restore NuGet packages
-      - name: Restore NuGet packages
-        run: dotnet restore SimpleBankingApp.sln # Make sure the solution file is correct
+      # Build and run the containers using Docker Compose
+      - name: Build and run docker-compose
+        run: |
+          docker-compose -f docker-compose.yml build
+          docker-compose -f docker-compose.yml up -d
 
-      # Step 4: Build the project
-      - name: Build project
-        run: dotnet build SimpleBankingApp.sln --configuration Release # Use Release or Debug depending on your needs
-
-      # Step 5: Run unit tests (optional but recommended)
+      # Run tests (if any tests are configured in your .NET app)
       - name: Run tests
-        run: dotnet test SimpleBankingApp.sln --configuration Release # Runs tests to ensure everything works
+        run: |
+          docker exec mvcapp dotnet test
 
-      # Step 6: Publish the app to prepare for deployment (change output path as needed)
-      - name: Publish project
-        run: dotnet publish SimpleBankingApp.sln --configuration Release --output ./publish
-
+  # Deployment job (this step assumes you're deploying to a server or cloud provider)
   deploy:
-    runs-on: windows-latest
-    needs: build # Ensures deployment only happens after the build job has passed
+    runs-on: ubuntu-latest
+    needs: build_and_test # Run only after successful build and tests
 
     steps:
-      # Step 1: Checkout the code again (needed in deploy job)
       - name: Checkout code
         uses: actions/checkout@v2
 
-      # Step 2: Deploy the application (this step is customizable based on where you deploy)
-      - name: Deploy your application
+      # Set up Docker
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      # Log in to DockerHub (if you need to push to DockerHub)
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # Push the docker image to DockerHub or deploy to your server
+      - name: Push to DockerHub
         run: |
-          echo "Deploying your application"
-          # You can replace the next line with your deployment script, such as:
-          # Upload to an SFTP server, deploy to Docker, or run an Azure CLI command
-          # Example for a generic deployment (replace with your actual deployment steps):
-          echo "Deploy step needs to be customized based on the deployment target"
+          docker-compose -f docker-compose.yml build
+          docker-compose -f docker-compose.yml push
+
+      # Optionally, deploy to a cloud platform or server
+      - name: Deploy to production
+        run: |
+          # Your deployment commands go here (e.g., SSH to your server and pull the latest Docker image)
+          echo "Deploying to production..."
