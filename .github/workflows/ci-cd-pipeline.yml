@@ -3,10 +3,10 @@ name: CI/CD Pipeline
 on:
   push:
     branches:
-      - production # Trigger on push to the main branch
+      - production # Trigger on push to the production branch
   pull_request:
     branches:
-      - production # Trigger on pull requests to the main branch
+      - production # Trigger on pull requests to the production branch
 
 jobs:
   # Build and Test job
@@ -16,7 +16,7 @@ jobs:
     services:
       sql_server_container:
         image: mcr.microsoft.com/mssql/server
-        options: --health-cmd="wait-for-it -t 30 localhost:1433" --health-start-period=30s
+        options: --health-cmd="nc -z localhost 1433" --health-start-period=30s
         ports:
           - 1433:1433
         env:
@@ -49,6 +49,12 @@ jobs:
         run: |
           docker-compose -f docker-compose.yml build
           docker-compose -f docker-compose.yml up -d
+
+      # Wait for SQL Server to be ready
+      - name: Wait for SQL Server to be ready
+        run: |
+          echo "Waiting for SQL Server to start..."
+          docker exec -T sql_server_container /bin/bash -c "until nc -z localhost 1433; do sleep 5; done"
 
       # Run tests (if any tests are configured in your .NET app)
       - name: Run tests
