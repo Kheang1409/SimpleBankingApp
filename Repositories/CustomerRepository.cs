@@ -14,12 +14,12 @@ namespace SimpleBankingApp.Repositories
 
         public async Task<List<Customer>> GetAllCustomersAsync()
         {
-            return await _dbContext.Customers.Include(c => c.Accounts).ToListAsync();
+            return await _dbContext.Customers.AsNoTracking().Include(c => c.Accounts).ToListAsync();
         }
 
         public async Task<Customer> GetCustomerByIdAsync(int customerId)
         {
-            return await _dbContext.Customers.Include(c => c.Accounts)
+            return await _dbContext.Customers.AsNoTracking().Include(c => c.Accounts)
                 .FirstOrDefaultAsync(c => c.CustomerId == customerId);
         }
 
